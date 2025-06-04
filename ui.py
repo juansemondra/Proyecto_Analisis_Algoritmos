@@ -225,7 +225,7 @@ class NumberLinkUI:
             f"• Tiempo de resolución: {stats['time_elapsed']:.2f} segundos\n"
             f"• Nodos explorados: {stats['nodes_explored']:,}\n"
             f"• Celdas cubiertas: {coverage}/{total_cells}\n"
-            f"• Soluciones encontradas: {stats['solutions_found']}\n"
+           # f"• Soluciones encontradas: {stats['solutions_found']}\n"
             f"• Heurística utilizada: {winning_heuristic}"
         )
     
