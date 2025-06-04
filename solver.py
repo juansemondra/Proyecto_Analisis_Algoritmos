@@ -5,7 +5,7 @@ from collections import deque
 class NumberLinkSolver:
     """Solucionador EXHAUSTIVO para NumberLink con instrumentación de heurísticas"""
     
-    def __init__(self, time_limit=300, debug=False, require_all_cells=False):
+    def __init__(self, time_limit=600, debug=False, require_all_cells=False):
         # Métricas generales
         self.solutions_found = 0
         self.nodes_explored = 0
@@ -136,7 +136,7 @@ class NumberLinkSolver:
             return False
 
         self.nodes_explored += 1
-        if self.nodes_explored % 1000 == 0:
+        if self.nodes_explored % 5000 == 0:
             self._debug_print(f"Progreso: {self.nodes_explored} nodos", idx)
 
         # Caso base
@@ -146,7 +146,7 @@ class NumberLinkSolver:
             return True
 
         start, end, number = pairs[idx]
-        if self.debug and (idx < 2 or self.nodes_explored % 200 == 1):
+        if self.debug and (idx < 2 or self.nodes_explored % 1000 == 1):
             self._debug_print(f"Nodo {self.nodes_explored}: Par {idx+1}/{len(pairs)} Nº{number}", idx)
 
         caminos = self._buscar_caminos_exhaustivo(start, end, board, number)
@@ -179,9 +179,9 @@ class NumberLinkSolver:
         if start == end:
             return [[start]]
 
-        max_paths = 50
+        max_paths = 200
         manhattan = abs(start[0] - end[0]) + abs(start[1] - end[1])
-        max_len = manhattan * 5 + 10
+        max_len = manhattan * 8 + 15
 
         res = []
         queue = [(start, [start], {start})]
@@ -210,7 +210,7 @@ class NumberLinkSolver:
         visited = {start}
         q = deque([start])
         checks = 0
-        max_checks = board.rows * board.cols
+        max_checks = board.rows * board.cols * 3
 
         while q and checks < max_checks:
             cur = q.popleft()
