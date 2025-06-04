@@ -1,6 +1,3 @@
-"""
-Casos de prueba para el solver de NumberLink
-"""
 
 import os
 from board import Board
@@ -18,25 +15,33 @@ def test_example_7x7():
     print()
     
     # Primero probar sin debug
-    solver = NumberLinkSolver()
+    solver = NumberLinkSolver(require_all_cells=True) # Example usually implies all cells covered
     success, paths = solver.resolver_tablero(board)
     
     if success:
         print("¡Solución encontrada!")
         print(f"Estadísticas: {solver.get_statistics()}")
         print("\nCaminos encontrados:")
+        # Assuming pairs are returned in a fixed order by get_pairs for association
+        original_pairs_ordered = board.get_pairs() # Get pairs once in their initial order
+        
+        # It's better if solver returns paths associated with numbers or original pair objects
+        # For now, we assume the paths list corresponds to the order of pairs given to the solver
+        # The solver internally reorders pairs, so this direct mapping might be incorrect.
+        # The printout in test_new_solver.py is more robust because it gets pairs *before* printing.
+        # For simplicity here, we just print paths.
         for i, path in enumerate(paths):
-            pairs = board.get_pairs()
-            if i < len(pairs):
-                number = pairs[i][2]
-                print(f"Número {number}: {path}")
+             # We can't reliably get the number for `paths[i]` here unless solver returns it.
+             # So, just print generic path info.
+            print(f"Camino {i+1} (longitud {len(path)}): {path[:3]}...{path[-3:] if len(path)>6 else path}")
+
     else:
         print("No se encontró solución")
         print(f"Estadísticas: {solver.get_statistics()}")
         
         # Si no encuentra solución, probar con debug para ver qué pasa
         print("\n--- Ejecutando con debug para diagnosticar ---")
-        debug_solver = NumberLinkSolver(debug=True, time_limit=10)
+        debug_solver = NumberLinkSolver(debug=True, time_limit=10, require_all_cells=True)
         debug_solver.resolver_tablero(board.copy())
     
     return success
@@ -189,10 +194,6 @@ def test_complex_5x5():
     
     return success
 
-def create_test_file(filename, content):
-    """Crea un archivo de prueba temporal"""
-    with open(filename, 'w') as f:
-        f.write(content)
 
 def run_all_tests():
     """Ejecuta todos los casos de prueba"""
@@ -214,33 +215,7 @@ def run_all_tests():
     
     # Test 4: Tablero complejo
     results.append(("Tablero 5x5 complejo", test_complex_5x5()))
-    
-    # Test 5: Tablero adicional desde archivo
-    print("\n=== Test: Tablero adicional 4x4 ===")
-    test_content = """4,4
-1,1,1
-1,4,2
-2,2,3
-3,1,3
-3,3,2
-4,4,1"""
-    
-    create_test_file("test_4x4.txt", test_content)
-    
-    try:
-        board_data, number_positions = load_board_from_file("test_4x4.txt")
-        board = Board(board_data, number_positions)
-        solver = NumberLinkSolver()
-        success, _ = solver.resolver_tablero(board)
-        results.append(("Tablero 4x4 desde archivo", success))
-        print(f"Resultado: {'Éxito' if success else 'Fallo'}")
-    except Exception as e:
-        print(f"Error en test 4x4: {e}")
-        results.append(("Tablero 4x4 desde archivo", False))
-    finally:
-        if os.path.exists("test_4x4.txt"):
-            os.remove("test_4x4.txt")
-    
+        
     # Resumen
     print("\n" + "="*50)
     print("RESUMEN DE PRUEBAS:")

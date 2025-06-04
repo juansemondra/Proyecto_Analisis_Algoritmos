@@ -1,15 +1,17 @@
-"""
-Casos de prueba simples y solucionables para NumberLink
-"""
 
 from board import Board
 from solver import NumberLinkSolver
 
-def test_2x3_solvable():
-    """Prueba con un tablero 2x3 que sí tiene solución completa"""
-    print("=== Test: Tablero 2x3 solucionable ===")
+def test_2x3_unsolvable_as_defined_correctly_fails():
+    """
+    Prueba con un tablero 2x3 que es irresoluble bajo las reglas estrictas.
+    El par '1' (0,0)-(0,2) tendría que pasar por (0,1).
+    La celda (0,1) es un extremo del par '2'.
+    Un camino no puede pasar sobre un número/extremo que no sea su propio destino.
+    El solver debe identificar esto y fallar.
+    """
+    print("=== Test: Tablero 2x3 irresoluble (según reglas estrictas) ===")
     
-    # Este tablero sí se puede resolver cubriendo todas las celdas
     board_data = [
         [1, 2, 1],
         [2, 3, 3]
@@ -29,14 +31,14 @@ def test_2x3_solvable():
     solver = NumberLinkSolver(debug=False)
     success, paths = solver.resolver_tablero(board)
     
-    print(f"Resultado: {'Éxito' if success else 'Fallo'}")
+    print(f"Resultado: {'Éxito' if success else 'Fallo'} (Esperado: Fallo, el solver identifica correctamente la irresolubilidad)")
     if success:
-        print("Caminos encontrados:")
+        print("Caminos encontrados (inesperado):")
         for i, path in enumerate(paths):
             print(f"  Camino {i+1}: {path}")
     print(f"Estadísticas: {solver.get_statistics()}")
     
-    return success
+    return not success # El test pasa si la solución falla (success is False)
 
 def test_3x3_partial():
     """Prueba con un tablero 3x3 sin requerir todas las celdas"""
@@ -141,12 +143,15 @@ def test_example_corrected():
             solver2 = NumberLinkSolver(debug=False, require_all_cells=True, time_limit=10)
             success2, paths2 = solver2.resolver_tablero(board)
             print(f"Resultado (requiriendo todas las celdas): {'Éxito' if success2 else 'Fallo'}")
+            # The test should ideally assert based on success2 if that's the main point
+            # For now, it returns based on the first success
+            return success and success2 # Both should pass for the example board
         
     except Exception as e:
         print(f"Error: {e}")
         return False
     
-    return success
+    return False # If first success was false
 
 def run_all_simple_tests():
     """Ejecuta todos los tests simples"""
@@ -155,7 +160,7 @@ def run_all_simple_tests():
     results = []
     
     # Tests
-    results.append(("2x3 solucionable", test_2x3_solvable()))
+    results.append(("2x3 irresoluble (correcto fallo)", test_2x3_unsolvable_as_defined_correctly_fails()))
     results.append(("3x3 parcial", test_3x3_partial()))
     results.append(("4x4 solucionable", test_4x4_solvable()))
     results.append(("Ejemplo 7x7", test_example_corrected()))

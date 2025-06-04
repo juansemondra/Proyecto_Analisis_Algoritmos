@@ -208,9 +208,14 @@ class NumberLinkUI:
         coverage = len(covered_cells)
         coverage_text = f" - Cobertura: {coverage}/{total_cells}"
         
+        winning_heuristic = stats.get('order_name', "No especificada")
+        if winning_heuristic is None: # Handle explicit None from solver
+            winning_heuristic = "Por defecto"
+
         self.status_label.config(
             text=f"¡Resuelto! Tiempo: {stats['time_elapsed']:.2f}s, "
-            f"Nodos: {stats['nodes_explored']}{coverage_text}"
+            f"Nodos: {stats['nodes_explored']:,}{coverage_text}, "
+            f"Heurística: {winning_heuristic}"
         )
         
         messagebox.showinfo(
@@ -220,7 +225,8 @@ class NumberLinkUI:
             f"• Tiempo de resolución: {stats['time_elapsed']:.2f} segundos\n"
             f"• Nodos explorados: {stats['nodes_explored']:,}\n"
             f"• Celdas cubiertas: {coverage}/{total_cells}\n"
-            f"• Soluciones encontradas: {stats['solutions_found']}"
+            f"• Soluciones encontradas: {stats['solutions_found']}\n"
+            f"• Heurística utilizada: {winning_heuristic}"
         )
     
     def clear_paths(self):
