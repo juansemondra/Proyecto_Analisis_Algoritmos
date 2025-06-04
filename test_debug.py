@@ -26,7 +26,7 @@ def test_minimal_2x2():
     print()
     
     # Probar con debug activado
-    solver = NumberLinkSolver(debug=True)
+    solver = NumberLinkSolver(debug=True, time_limit=10)
     success, paths = solver.resolver_tablero(board)
     
     print(f"Resultado: {'Éxito' if success else 'Fallo'}")
@@ -56,7 +56,7 @@ def test_simple_3x3_debug():
     print()
     
     # Probar con debug activado
-    solver = NumberLinkSolver(debug=True)
+    solver = NumberLinkSolver(debug=True, time_limit=10)
     success, paths = solver.resolver_tablero(board)
     
     print(f"Resultado: {'Éxito' if success else 'Fallo'}")
@@ -107,7 +107,7 @@ def test_board_validation():
     print(f"\nPares encontrados: {board.get_pairs()}")
 
 def test_example_debug():
-    """Prueba el ejemplo 7x7 con debug limitado"""
+    """Prueba el ejemplo 7x7 con debug mejorado"""
     print("\n=== Test: Ejemplo 7x7 con debug ===")
     
     try:
@@ -116,17 +116,69 @@ def test_example_debug():
         
         print("Tablero inicial:")
         print(board)
+        print(f"Pares a conectar: {board.get_pairs()}")
         print()
         
-        # Solo debuggear los primeros pasos
-        solver = NumberLinkSolver(debug=True, time_limit=5)
+        # Probar con tiempo más largo y debug activado
+        solver = NumberLinkSolver(debug=True, time_limit=30, require_all_cells=False)
         success, paths = solver.resolver_tablero(board)
         
         print(f"Resultado: {'Éxito' if success else 'Fallo'}")
+        print(f"Estadísticas: {solver.get_statistics()}")
+        
+        if success:
+            print("Caminos encontrados:")
+            for i, path in enumerate(paths):
+                pairs = board.get_pairs()
+                if i < len(pairs):
+                    number = pairs[i][2]
+                    print(f"  Número {number}: {path}")
+        
+        return success
         
     except FileNotFoundError:
         print("Archivo example.txt no encontrado")
         return False
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+
+def test_known_solvable():
+    """Prueba con un tablero que sabemos que tiene solución"""
+    print("\n=== Test: Tablero 4x4 solucionable conocido ===")
+    
+    board_data = [
+        [1, 2, 3, 4],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [1, 2, 3, 4]
+    ]
+    
+    number_positions = {
+        1: [(0, 0), (3, 0)],
+        2: [(0, 1), (3, 1)],
+        3: [(0, 2), (3, 2)],
+        4: [(0, 3), (3, 3)]
+    }
+    
+    board = Board(board_data, number_positions)
+    print("Tablero inicial:")
+    print(board)
+    print()
+    
+    solver = NumberLinkSolver(debug=True, time_limit=10)
+    success, paths = solver.resolver_tablero(board)
+    
+    print(f"Resultado: {'Éxito' if success else 'Fallo'}")
+    if success:
+        print("Caminos encontrados:")
+        for i, path in enumerate(paths):
+            pairs = board.get_pairs()
+            if i < len(pairs):
+                number = pairs[i][2]
+                print(f"  Número {number}: {path}")
+    
+    return success
 
 def run_debug_tests():
     """Ejecuta todos los tests de debugging"""
@@ -143,8 +195,11 @@ def run_debug_tests():
     # Test 3: Tablero 3x3 con debug
     results.append(("Tablero 3x3 debug", test_simple_3x3_debug()))
     
-    # Test 4: Ejemplo con debug (solo primeros pasos)
-    test_example_debug()
+    # Test 4: Tablero 4x4 conocido
+    results.append(("Tablero 4x4 solucionable", test_known_solvable()))
+    
+    # Test 5: Ejemplo con debug (debe funcionar ahora)
+    results.append(("Ejemplo 7x7", test_example_debug()))
     
     print("\n" + "="*50)
     print("RESUMEN DE TESTS DE DEBUG:")

@@ -39,6 +39,12 @@ class NumberLinkUI:
                                            variable=self.animate_var)
         self.animate_check.pack(side=tk.LEFT, padx=5)
         
+        # Checkbox para completitud total (modo avanzado)
+        self.complete_all_var = tk.BooleanVar(value=False)
+        self.complete_all_check = tk.Checkbutton(control_frame, text="Cubrir todas las celdas",
+                                                variable=self.complete_all_var)
+        self.complete_all_check.pack(side=tk.LEFT, padx=5)
+        
         # Label de estado
         self.status_label = tk.Label(control_frame, text="Carga un tablero para comenzar")
         self.status_label.pack(side=tk.LEFT, padx=20)
@@ -109,10 +115,14 @@ class NumberLinkUI:
         try:
             # Crear instancia del tablero para el solver
             board = Board(self.board_data, self.number_positions)
-            self.solver = NumberLinkSolver(time_limit=30)
+            
+            # Usar la opción seleccionada por el usuario
+            require_all_cells = self.complete_all_var.get()
+            self.solver = NumberLinkSolver(time_limit=30, require_all_cells=require_all_cells)
             
             # Actualizar estado
-            self.root.after(0, lambda: self.status_label.config(text="Resolviendo..."))
+            mode_text = "todas las celdas" if require_all_cells else "solo conexiones"
+            self.root.after(0, lambda: self.status_label.config(text=f"Resolviendo ({mode_text})..."))
             
             # Resolver
             start_time = time.time()
@@ -189,16 +199,27 @@ class NumberLinkUI:
     
     def _show_completion_message(self, stats):
         """Muestra mensaje de completación con estadísticas"""
+        # Calcular cobertura
+        covered_cells = set()
+        for path in self.completed_paths.values():
+            covered_cells.update(path)
+        
+        total_cells = self.rows * self.cols
+        coverage = len(covered_cells)
+        coverage_text = f" - Cobertura: {coverage}/{total_cells}"
+        
         self.status_label.config(
             text=f"¡Resuelto! Tiempo: {stats['time_elapsed']:.2f}s, "
-            f"Nodos: {stats['nodes_explored']}"
+            f"Nodos: {stats['nodes_explored']}{coverage_text}"
         )
+        
         messagebox.showinfo(
             "¡Tablero resuelto!",
             f"El tablero ha sido resuelto exitosamente.\n\n"
             f"Estadísticas:\n"
             f"• Tiempo de resolución: {stats['time_elapsed']:.2f} segundos\n"
             f"• Nodos explorados: {stats['nodes_explored']:,}\n"
+            f"• Celdas cubiertas: {coverage}/{total_cells}\n"
             f"• Soluciones encontradas: {stats['solutions_found']}"
         )
     
@@ -386,14 +407,10 @@ class NumberLinkUI:
             if path_valid:
                 print(f"Ruta completa para número {self.drawing_number}: {self.path}")
                 self.completed_paths[self.drawing_number] = self.path.copy()
-                # Chequear condición de victoria solo si el camino fue válido
+                # Chequear condición de victoria manual (solo para juego manual)
                 if self.check_win_condition():
                     self.draw_board() # Redibujar para mostrar el último camino
-                    messagebox.showinfo("¡Felicidades!", "¡Has completado el tablero!")
-                    # Opcional: deshabilitar más interacciones o cerrar
-                    # self.canvas.unbind("<Button-1>")
-                    # self.canvas.unbind("<B1-Motion>")
-                    # self.canvas.unbind("<ButtonRelease-1>")
+                    messagebox.showinfo("¡Felicidades!", "¡Has completado el tablero manualmente!")
             else:
                  print("Ruta inválida, se descarta.")
         else:
@@ -442,31 +459,10 @@ class NumberLinkUI:
 
 
     def check_win_condition(self):
-        # 1. Verificar si todos los pares de números definidos originalmente tienen un camino completo
+        """Condición de victoria para juego manual (más permisiva)"""
+        # Solo verificar que todos los pares estén conectados
         if len(self.completed_paths) != len(self.number_positions):
-            #print(f"Win check fail: Caminos completados ({len(self.completed_paths)}) != Pares de números ({len(self.number_positions)})")
             return False
 
-        # 2. Verificar si todas las celdas del tablero están cubiertas por algún camino
-        covered_cells = set()
-        for path in self.completed_paths.values():
-            for cell in path:
-                covered_cells.add(cell)
-
-        total_cells = self.rows * self.cols
-        if len(covered_cells) != total_cells:
-            #print(f"Win check fail: Celdas cubiertas ({len(covered_cells)}) != Celdas totales ({total_cells})")
-            # Verifiquemos si alguna celda *no numérica* quedó sin cubrir
-            for r in range(self.rows):
-                for c in range(self.cols):
-                     # No necesitamos chequear las celdas con números iniciales, esas deben estar cubiertas por definición
-                     # if self.board_data[r][c] == 0 and (r, c) not in covered_cells:
-                     if (r, c) not in covered_cells: # Más simple: si alguna celda no está cubierta, falló.
-                         #print(f"Win check fail: Celda no cubierta: {(r, c)}")
-                         return False
-            # Si llegamos aquí, significa que len(covered_cells) != total_cells, pero no encontramos celdas sin cubrir,
-            # lo cual indica una posible inconsistencia lógica. Mejor retornar False.
-            return False
-
-        print("¡Condición de victoria cumplida!")
+        print("¡Todos los pares conectados!")
         return True

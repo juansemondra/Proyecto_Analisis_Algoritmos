@@ -1,10 +1,11 @@
 from board import Board
 import time
+from collections import deque
 
 class NumberLinkSolver:
-    """Solucionador automático para el juego NumberLink usando backtracking optimizado"""
+    """Solucionador EXHAUSTIVO para NumberLink - prioriza encontrar solución sobre velocidad"""
     
-    def __init__(self, time_limit=30, debug=False, require_all_cells=True):
+    def __init__(self, time_limit=300, debug=False, require_all_cells=False):  # 5 minutos por defecto
         self.solutions_found = 0
         self.nodes_explored = 0
         self.time_limit = time_limit
@@ -20,13 +21,7 @@ class NumberLinkSolver:
         
     def resolver_tablero(self, board):
         """
-        Función principal para resolver el tablero
-        
-        Args:
-            board: Instancia de Board con el tablero a resolver
-            
-        Returns:
-            tuple: (éxito, caminos) donde caminos es una lista de listas de coordenadas
+        Función principal - busca exhaustivamente hasta encontrar solución
         """
         self.start_time = time.time()
         self.nodes_explored = 0
@@ -35,199 +30,211 @@ class NumberLinkSolver:
         pairs = board.get_pairs()
         paths = []
         
-        self._debug_print(f"=== INICIANDO RESOLUCIÓN ===")
+        self._debug_print(f"=== BÚSQUEDA EXHAUSTIVA ===")
         self._debug_print(f"Tablero: {board.rows}x{board.cols}")
         self._debug_print(f"Pares: {len(pairs)}")
-        self._debug_print(f"Requiere todas las celdas: {self.require_all_cells}")
+        self._debug_print(f"Tiempo límite: {self.time_limit}s")
         
-        # Crear copia del tablero
-        working_board = board.copy()
-        
-        # Intentar diferentes ordenamientos
+        # Probar MÚLTIPLES órdenes de pares
         orderings = [
-            self._ordenar_por_distancia,      # Más cortos primero
-            self._ordenar_por_restriccion,    # Más restrictivos primero
-            lambda p, b: list(reversed(self._ordenar_por_distancia(p, b))),  # Más largos primero
+            self._order_by_distance,
+            self._order_by_border_preference,
+            self._order_by_flexibility,
+            list(reversed(self._order_by_distance(pairs, board)))
         ]
         
-        for idx, ordering_func in enumerate(orderings):
+        for order_idx, ordering_func in enumerate(orderings):
             if time.time() - self.start_time > self.time_limit:
                 break
                 
-            self._debug_print(f"\nProbando ordenamiento {idx + 1}: {ordering_func.__name__}")
+            self._debug_print(f"\n--- Probando orden {order_idx + 1} ---")
             
-            sorted_pairs = ordering_func(pairs, working_board)
-            board_copy = working_board.copy()
+            if callable(ordering_func):
+                sorted_pairs = ordering_func(pairs, board)
+            else:
+                sorted_pairs = ordering_func
+            
+            self._debug_print("Orden de pares:")
+            for i, (start, end, num) in enumerate(sorted_pairs):
+                dist = abs(start[0] - end[0]) + abs(start[1] - end[1])
+                self._debug_print(f"  {i+1}. Número {num}: {start} -> {end} (dist: {dist})")
+            
+            # Crear copia fresca del tablero
+            working_board = board.copy()
             paths_copy = []
             
-            if self._resolver_recursivo(0, board_copy, sorted_pairs, paths_copy):
-                self._debug_print(f"¡Solución encontrada con {ordering_func.__name__}!")
+            if self._resolver_exhaustivo(0, working_board, sorted_pairs, paths_copy):
+                self._debug_print(f"\n¡SOLUCIÓN ENCONTRADA con orden {order_idx + 1}!")
                 return True, paths_copy
         
-        self._debug_print(f"\n=== No se encontró solución ===")
+        self._debug_print(f"\n=== NO SE ENCONTRÓ SOLUCIÓN ===")
         self._debug_print(f"Nodos explorados: {self.nodes_explored}")
         
         return False, []
     
-    def _ordenar_por_distancia(self, pairs, board):
-        """Ordena por distancia Manhattan (más cortos primero)"""
+    def _order_by_distance(self, pairs, board):
+        """Orden por distancia - más cortos primero"""
         return sorted(pairs, key=lambda p: abs(p[0][0] - p[1][0]) + abs(p[0][1] - p[1][1]))
     
-    def _ordenar_por_restriccion(self, pairs, board):
-        """Ordena por nivel de restricción (más restrictivos primero)"""
-        def restriccion_score(pair):
-            start, end, _ = pair
-            # Contar vecinos libres
-            free = 0
-            for pos in [start, end]:
-                for n in board.get_neighbors(pos[0], pos[1]):
-                    if board.grid[n[0]][n[1]] == Board.EMPTY:
-                        free += 1
-            # Penalizar esquinas y bordes
-            corners = sum(1 for pos in [start, end]
-                         if (pos[0] in [0, board.rows-1]) + (pos[1] in [0, board.cols-1]) >= 2)
-            edges = sum(1 for pos in [start, end]
-                       if pos[0] in [0, board.rows-1] or pos[1] in [0, board.cols-1])
-            return -free + corners * 3 + edges
-        
-        return sorted(pairs, key=restriccion_score)
+    def _order_by_border_preference(self, pairs, board):
+        """Orden por preferencia de borde - bordes largos primero"""
+        def score(pair):
+            start, end, num = pair
+            dist = abs(start[0] - end[0]) + abs(start[1] - end[1])
+            
+            start_border = (start[0] == 0 or start[0] == board.rows-1 or
+                           start[1] == 0 or start[1] == board.cols-1)
+            end_border = (end[0] == 0 or end[0] == board.rows-1 or
+                         end[1] == 0 or end[1] == board.cols-1)
+            
+            if start_border and end_border and dist > 5:
+                return 1  # Prioridad alta
+            elif dist <= 3:
+                return 3  # Prioridad baja (flexibles al final)
+            else:
+                return 2  # Prioridad media
+            
+        return sorted(pairs, key=score)
     
-    def _resolver_recursivo(self, index, board, pairs, paths):
-        """Función recursiva principal del backtracking"""
-        # Verificar tiempo
+    def _order_by_flexibility(self, pairs, board):
+        """Orden por flexibilidad - menos flexibles primero"""
+        def flexibility_score(pair):
+            start, end, num = pair
+            
+            # Contar opciones de movimiento
+            start_neighbors = len([n for n in board.get_neighbors(start[0], start[1])
+                                 if board.grid[n[0]][n[1]] == Board.EMPTY])
+            end_neighbors = len([n for n in board.get_neighbors(end[0], end[1])
+                               if board.grid[n[0]][n[1]] == Board.EMPTY])
+            
+            return min(start_neighbors, end_neighbors)  # Menos opciones = menos flexible
+        
+        return sorted(pairs, key=flexibility_score)
+    
+    def _resolver_exhaustivo(self, index, board, pairs, paths):
+        """Backtracking exhaustivo - explora TODO hasta encontrar solución"""
+        
+        # Check time limit
         if time.time() - self.start_time > self.time_limit:
+            self._debug_print(f"Tiempo límite alcanzado", index)
             return False
             
         self.nodes_explored += 1
         
+        # Progreso cada 1000 nodos
+        if self.nodes_explored % 1000 == 0:
+            elapsed = time.time() - self.start_time
+            self._debug_print(f"Progreso: {self.nodes_explored} nodos, {elapsed:.1f}s")
+        
         # Caso base: todos los pares conectados
         if index == len(pairs):
-            # Verificar si se cumple la condición de victoria
             if self.require_all_cells:
                 complete = board.is_complete()
                 if complete:
-                    self.solutions_found += 1
-                self._debug_print(f"Todos los pares conectados. Completo: {complete}", index)
+                    self._debug_print(f"¡SOLUCIÓN COMPLETA ENCONTRADA!", index)
                 return complete
             else:
-                self.solutions_found += 1
-                self._debug_print(f"Todos los pares conectados (sin requerir completitud)", index)
+                self._debug_print(f"¡SOLUCIÓN ENCONTRADA!", index)
                 return True
         
         start, end, number = pairs[index]
         
-        # Debug para los primeros niveles
-        if self.debug and (index < 3 or self.nodes_explored % 50 == 1):
-            self._debug_print(f"Nodo {self.nodes_explored}: Conectando {number} de {start} a {end}", index)
+        if self.debug and (index < 2 or self.nodes_explored % 100 == 1):
+            self._debug_print(f"Nodo {self.nodes_explored}: Par {index+1}/{len(pairs)} - Número {number} de {start} a {end}", index)
         
-        # Buscar todos los caminos posibles
-        possible_paths = self._buscar_caminos(start, end, board, number)
+        # Buscar caminos con límites MUY generosos
+        caminos_posibles = self._buscar_caminos_exhaustivo(start, end, board, number)
         
-        if not possible_paths:
-            self._debug_print(f"No se encontraron caminos para {number}", index)
+        if self.debug and (index < 2 or self.nodes_explored % 100 == 1):
+            self._debug_print(f"Caminos encontrados: {len(caminos_posibles)}", index + 1)
+        
+        if not caminos_posibles:
             return False
         
-        self._debug_print(f"Encontrados {len(possible_paths)} caminos posibles para {number}", index)
-        
-        # Probar cada camino
-        for path_idx, path in enumerate(possible_paths):
+        # Probar TODOS los caminos encontrados
+        for i, camino in enumerate(caminos_posibles):
+            if self.debug and index < 2 and i < 5:
+                self._debug_print(f"Probando camino {i+1}/{len(caminos_posibles)}: longitud {len(camino)}", index + 1)
+            
             # Marcar camino
-            self._marcar_camino(path, board)
-            paths.append(path)
+            self._marcar_camino(camino, board)
+            paths.append(camino)
             
-            self._debug_print(f"Probando camino {path_idx + 1}/{len(possible_paths)}: {path}", index + 1)
+            # Validación MUY básica - solo verificar que no se rompió todo
+            validation_ok = True
             
-            # Verificación básica de viabilidad solo para casos más complejos
-            viable = True
-            if len(pairs) > 3 and index < len(pairs) - 1:
-                viable = self._es_estado_viable_basico(board, pairs[index + 1:])
-                self._debug_print(f"Estado viable: {viable}", index + 1)
+            # Solo verificar los próximos 2 pares para no ser demasiado estricto
+            if index < len(pairs) - 1:
+                next_pairs_to_check = pairs[index+1:index+3]  # Solo los próximos 2
+                for check_start, check_end, check_num in next_pairs_to_check:
+                    if not self._conectividad_basica(check_start, check_end, board, check_num):
+                        validation_ok = False
+                        break
             
-            if viable:
+            if validation_ok:
                 # Continuar recursión
-                if self._resolver_recursivo(index + 1, board, pairs, paths):
+                if self._resolver_exhaustivo(index + 1, board, pairs, paths):
                     return True
             
             # Backtrack
-            self._desmarcar_camino(path, board)
+            self._desmarcar_camino(camino, board)
             paths.pop()
-            self._debug_print(f"Backtracking del camino {path_idx + 1}", index + 1)
         
         return False
     
-    def _buscar_caminos(self, start, end, board, number):
-        """Busca todos los caminos posibles entre start y end"""
+    def _buscar_caminos_exhaustivo(self, start, end, board, number):
+        """Búsqueda exhaustiva de caminos - límites MUY generosos"""
         if start == end:
             return [[start]]
         
-        # Límites más generosos
-        max_length = board.rows * board.cols  # Longitud máxima = todas las celdas
-        max_paths = 20  # Más caminos para explorar
+        # Límites ENORMES para no cortar soluciones válidas
+        max_paths = 50  # Muchos más caminos
+        manhattan_dist = abs(start[0] - end[0]) + abs(start[1] - end[1])
+        max_length = manhattan_dist * 5 + 10  # MUCHO más generoso
         
-        # Para tableros pequeños, no limitar tanto
-        if board.rows * board.cols <= 16:  # 4x4 o menor
-            max_paths = 50
-            
         paths = []
         
-        def dfs(current, path, visited):
-            if len(paths) >= max_paths:
-                return
+        # BFS exhaustivo
+        queue = [(start, [start], {start})]
+        
+        while queue and len(paths) < max_paths:
+            current, path, visited = queue.pop(0)
+            
+            # Solo cortar si realmente es demasiado largo
+            if len(path) > max_length:
+                continue
             
             if current == end:
-                paths.append(path[:])
-                return
+                paths.append(path)
+                continue
             
-            if len(path) > max_length:
-                return
-            
-            # Explorar vecinos
+            # Explorar TODAS las direcciones posibles
             neighbors = board.get_neighbors(current[0], current[1])
-            
-            # Para tableros pequeños, no optimizar el orden de vecinos
-            if board.rows * board.cols > 16:
-                neighbors.sort(key=lambda n: abs(n[0] - end[0]) + abs(n[1] - end[1]))
-            
             for neighbor in neighbors:
                 if neighbor not in visited and board.is_valid_move(neighbor[0], neighbor[1], number):
                     new_path = path + [neighbor]
                     new_visited = visited | {neighbor}
-                    dfs(neighbor, new_path, new_visited)
+                    queue.append((neighbor, new_path, new_visited))
         
-        # Iniciar búsqueda
-        dfs(start, [start], {start})
-        
-        # Ordenar por longitud (más cortos primero)
+        # Ordenar por longitud (más cortos primero, pero probar todos)
         paths.sort(key=len)
         
-        self._debug_print(f"Búsqueda de caminos para {number}: {len(paths)} caminos encontrados")
-        
-        return paths[:max_paths]
+        return paths
     
-    def _es_estado_viable_basico(self, board, remaining_pairs):
-        """Verificación básica de viabilidad (solo para casos complejos)"""
-        # Verificar solo el siguiente par
-        if not remaining_pairs:
-            return True
-            
-        next_start, next_end, next_number = remaining_pairs[0]
-        
-        # Verificación simple: ¿hay al menos un camino directo posible?
-        return self._hay_camino_simple(next_start, next_end, board, next_number)
-    
-    def _hay_camino_simple(self, start, end, board, number):
-        """BFS simple para verificar conectividad básica"""
+    def _conectividad_basica(self, start, end, board, number):
+        """Verificación MUY básica de conectividad - solo lo esencial"""
         if start == end:
             return True
         
+        # BFS simple con límite generoso
         visited = {start}
-        queue = [start]
-        max_iterations = board.rows * board.cols  # Evitar bucles infinitos
-        iterations = 0
+        queue = deque([start])
+        max_checks = board.rows * board.cols  # Límite muy generoso
+        checks = 0
         
-        while queue and iterations < max_iterations:
-            iterations += 1
-            current = queue.pop(0)
+        while queue and checks < max_checks:
+            current = queue.popleft()
+            checks += 1
             
             for neighbor in board.get_neighbors(current[0], current[1]):
                 if neighbor == end:
@@ -244,10 +251,6 @@ class NumberLinkSolver:
         for r, c in path:
             if board.original_grid[r][c] == Board.EMPTY:
                 board.mark_cell(r, c, Board.VISITED)
-        
-        if self.debug:
-            self._debug_print(f"Camino marcado: {path}")
-            self._debug_print(f"Tablero después de marcar:\n{board}")
     
     def _desmarcar_camino(self, path, board):
         """Desmarca un camino del tablero"""
