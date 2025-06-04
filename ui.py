@@ -1,14 +1,50 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from loader import load_board_from_file
+from board import Board
+from solver import NumberLinkSolver
+import threading
+import time
 
 CELL_SIZE = 60
 
 class NumberLinkUI:
     def __init__(self, root):
         self.root = root # Asignar root primero
-        self.root.title("NumberLink - Entrega 1")
-        self.canvas = tk.Canvas(root, bg="white")
+        self.root.title("NumberLink - Entrega 1 & 2")
+        
+        # Frame principal
+        main_frame = tk.Frame(root)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Frame de controles
+        control_frame = tk.Frame(main_frame)
+        control_frame.pack(side=tk.TOP, fill=tk.X)
+        
+        # Botones
+        self.load_button = tk.Button(control_frame, text="Cargar Tablero", command=self.load_board)
+        self.load_button.pack(side=tk.LEFT, padx=5, pady=5)
+        
+        self.solve_button = tk.Button(control_frame, text="Resolver Automáticamente",
+                                     command=self.solve_automatically, state=tk.DISABLED)
+        self.solve_button.pack(side=tk.LEFT, padx=5, pady=5)
+        
+        self.clear_button = tk.Button(control_frame, text="Limpiar Caminos",
+                                     command=self.clear_paths, state=tk.DISABLED)
+        self.clear_button.pack(side=tk.LEFT, padx=5, pady=5)
+        
+        # Checkbox para animación
+        self.animate_var = tk.BooleanVar(value=True)
+        self.animate_check = tk.Checkbutton(control_frame, text="Animar solución",
+                                           variable=self.animate_var)
+        self.animate_check.pack(side=tk.LEFT, padx=5)
+        
+        # Label de estado
+        self.status_label = tk.Label(control_frame, text="Carga un tablero para comenzar")
+        self.status_label.pack(side=tk.LEFT, padx=20)
+        
+        # Canvas
+        self.canvas = tk.Canvas(main_frame, bg="white")
         self.canvas.pack(fill=tk.BOTH, expand=True)
 
         # Variables del estado del tablero
@@ -20,6 +56,10 @@ class NumberLinkUI:
         self.path = []
         self.drawing_number = None
         self.completed_paths = {}  # {numero: [(r, c), ...]}
+        
+        # Variables para el solver
+        self.solver = None
+        self.solving = False
 
         # Vinculación de eventos del ratón al canvas
         self.canvas.bind("<Button-1>", self.on_click_start)
@@ -29,13 +69,9 @@ class NumberLinkUI:
         # Vinculación del evento de redimensionar la ventana
         self.root.bind("<Configure>", self.redraw)
 
-        # Cargar el tablero inicial
-        self.load_board()
-
     def load_board(self):
         path = filedialog.askopenfilename(title="Selecciona archivo del tablero")
         if not path:
-            self.root.destroy() # Salir si no se selecciona archivo
             return
         try:
             self.board_data, self.number_positions = load_board_from_file(path)
@@ -45,10 +81,134 @@ class NumberLinkUI:
             self.path = [] # Reiniciar camino en progreso
             self.drawing_number = None # Reiniciar número en dibujo
             self.draw_board()
+            
+            # Habilitar botones
+            self.solve_button.config(state=tk.NORMAL)
+            self.clear_button.config(state=tk.NORMAL)
+            self.status_label.config(text=f"Tablero {self.rows}x{self.cols} cargado")
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo cargar el archivo del tablero:\n{e}")
-            self.root.destroy()
-
+    
+    def solve_automatically(self):
+        """Resuelve el tablero automáticamente usando el solver"""
+        if self.solving:
+            self.status_label.config(text="Ya se está resolviendo...")
+            return
+        
+        # Deshabilitar controles durante la resolución
+        self.solving = True
+        self.solve_button.config(state=tk.DISABLED)
+        self.clear_paths()
+        
+        # Crear thread para no bloquear la UI
+        solver_thread = threading.Thread(target=self._run_solver)
+        solver_thread.start()
+    
+    def _run_solver(self):
+        """Ejecuta el solver en un thread separado"""
+        try:
+            # Crear instancia del tablero para el solver
+            board = Board(self.board_data, self.number_positions)
+            self.solver = NumberLinkSolver(time_limit=30)
+            
+            # Actualizar estado
+            self.root.after(0, lambda: self.status_label.config(text="Resolviendo..."))
+            
+            # Resolver
+            start_time = time.time()
+            success, paths = self.solver.resolver_tablero(board)
+            elapsed_time = time.time() - start_time
+            
+            if success:
+                # Convertir paths a formato de UI
+                self._display_solution(paths, elapsed_time)
+            else:
+                # Capturar valores en variables locales para el lambda
+                nodes = self.solver.nodes_explored
+                time_str = f"{elapsed_time:.2f}s"
+                
+                self.root.after(0, lambda: messagebox.showwarning(
+                    "Sin solución",
+                    f"No se encontró solución para este tablero.\n"
+                    f"Nodos explorados: {nodes}\n"
+                    f"Tiempo: {time_str}"
+                ))
+                self.root.after(0, lambda: self.status_label.config(
+                    text=f"Sin solución (tiempo: {time_str})"
+                ))
+        except Exception as e:
+            # Capturar el mensaje de error en una variable local
+            error_msg = str(e)
+            self.root.after(0, lambda: messagebox.showerror("Error", f"Error al resolver: {error_msg}"))
+            self.root.after(0, lambda: self.status_label.config(text="Error al resolver"))
+        finally:
+            self.solving = False
+            self.root.after(0, lambda: self.solve_button.config(state=tk.NORMAL))
+    
+    def _display_solution(self, paths, elapsed_time):
+        """Muestra la solución encontrada"""
+        # Obtener estadísticas
+        stats = self.solver.get_statistics()
+        
+        # Convertir paths a diccionario por número
+        pairs = Board(self.board_data, self.number_positions).get_pairs()
+        
+        if self.animate_var.get():
+            # Animar la solución
+            self.root.after(0, lambda: self.status_label.config(text="Animando solución..."))
+            self._animate_solution(paths, pairs, stats)
+        else:
+            # Mostrar instantáneamente
+            for i, path in enumerate(paths):
+                if i < len(pairs):
+                    number = pairs[i][2]
+                    self.completed_paths[number] = path
+            
+            self.root.after(0, self.draw_board)
+            self.root.after(0, lambda: self._show_completion_message(stats))
+    
+    def _animate_solution(self, paths, pairs, stats):
+        """Anima la solución dibujando los caminos uno por uno"""
+        def draw_next_path(index):
+            if index >= len(paths):
+                # Animación completa
+                self._show_completion_message(stats)
+                return
+            
+            # Dibujar el siguiente camino
+            if index < len(pairs):
+                number = pairs[index][2]
+                self.completed_paths[number] = paths[index]
+                self.draw_board()
+            
+            # Programar el siguiente
+            self.root.after(500, lambda: draw_next_path(index + 1))
+        
+        # Iniciar animación
+        self.root.after(100, lambda: draw_next_path(0))
+    
+    def _show_completion_message(self, stats):
+        """Muestra mensaje de completación con estadísticas"""
+        self.status_label.config(
+            text=f"¡Resuelto! Tiempo: {stats['time_elapsed']:.2f}s, "
+            f"Nodos: {stats['nodes_explored']}"
+        )
+        messagebox.showinfo(
+            "¡Tablero resuelto!",
+            f"El tablero ha sido resuelto exitosamente.\n\n"
+            f"Estadísticas:\n"
+            f"• Tiempo de resolución: {stats['time_elapsed']:.2f} segundos\n"
+            f"• Nodos explorados: {stats['nodes_explored']:,}\n"
+            f"• Soluciones encontradas: {stats['solutions_found']}"
+        )
+    
+    def clear_paths(self):
+        """Limpia todos los caminos dibujados"""
+        self.completed_paths = {}
+        self.path = []
+        self.drawing_number = None
+        self.draw_board()
+        self.status_label.config(text="Caminos limpiados")
 
     def draw_board(self):
         self.canvas.delete("all")
@@ -247,10 +407,13 @@ class NumberLinkUI:
         self.draw_board()
 
     def draw_path(self, path_coords, number):
-        # Podríamos tener un mapa de colores si quisiéramos diferenciar números
-        # colors = {1: "red", 2: "green", 3: "blue", 4: "orange", ...}
-        # color = colors.get(number, "grey") # Usar gris por defecto
-        color = "red" # Por ahora, todos rojos
+        # Mapa de colores para diferentes números
+        colors = {
+            1: "#FF6B6B", 2: "#4ECDC4", 3: "#45B7D1", 4: "#FFA07A",
+            5: "#98D8C8", 6: "#FDCB6E", 7: "#6C5CE7", 8: "#A29BFE",
+            9: "#FF7979", 10: "#BADC58"
+        }
+        color = colors.get(number, "#95A5A6") # Gris por defecto
 
         if len(path_coords) < 2: return # No se puede dibujar línea con menos de 2 puntos
 
@@ -307,9 +470,3 @@ class NumberLinkUI:
 
         print("¡Condición de victoria cumplida!")
         return True
-
-# Esto permite ejecutar ui.py directamente para pruebas rápidas, aunque no es necesario para la ejecución normal.
-# if __name__ == '__main__':
-#     root = tk.Tk()
-#     app = NumberLinkUI(root)
-#     root.mainloop()
