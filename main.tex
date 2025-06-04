@@ -1,0 +1,302 @@
+
+\documentclass[spanish]{article}
+\usepackage[T1]{fontenc}
+\usepackage{float}
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{amsfonts}
+\PassOptionsToPackage{normalem}{ulem}
+\usepackage{ulem}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{enumitem} % Para listas personalizadas
+\makeatletter
+\def\infinity{\rotatebox{90}{8}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LyX specific LaTeX commands.
+\newcommand{\noun}[1]{\textsc{#1}}
+\floatstyle{ruled}
+\newfloat{algorithm}{tbp}{loa}
+\providecommand{\algorithmname}{Algorithm}
+\floatname{algorithm}{\protect\algorithmname}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Textclass specific LaTeX commands.
+\numberwithin{equation}{section}
+\numberwithin{figure}{section}
+\theoremstyle{definition}
+\newtheorem*{defn*}{\protect\definitionname}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% User specified LaTeX commands.
+\usepackage{xmpmulti}
+\usepackage{algorithm,algpseudocode}
+
+\makeatother
+
+\usepackage{babel}
+\addto\shorthandsspanish{\spanishdeactivate{~<>}}
+
+\addto\captionsspanish{\renewcommand{\definitionname}{Definición}}
+\addto\captionsspanish{\renewcommand{\algorithmname}{Algoritmo}}
+\addto\captionsspanish{\renewcommand{\definitionname}{Definición}}
+\providecommand{\definitionname}{Definition}
+
+\begin{document}
+\title{\selectlanguage{spanish}%
+Proyecto Análisis de Algoritmos <<NumberLink>>}
+\author{\selectlanguage{spanish}%
+Daniel Sandoval, Juan Sebastián Mondragón}
+\date{\selectlanguage{spanish}%
+\today}
+\maketitle
+\begin{abstract}
+Este documento presenta el análisis, diseño e implementación de un algoritmo para la solución automática del juego NumberLink. Se detalla la estrategia de backtracking empleada, junto con diversas heurísticas y técnicas para mejorar su rendimiento y capacidad de encontrar soluciones en tableros complejos.
+\end{abstract}
+
+\part{Análisis y diseño del problema}
+
+\section{Análisis}
+
+El problema, informalmente, se puede describir como:
+
+Se desea encontrar una solución para un tablero cuadrado de tamaño $n \times n$, donde algunas celdas están marcadas con números naturales $a_i \in \mathbb{N}$, y cada número aparece exactamente dos veces. El objetivo es conectar cada par de celdas que contienen el mismo número mediante un camino continuo sobre el tablero.
+
+Dado un conjunto de pares de celdas $(p_1, p_2)$ que contienen el mismo número, se debe construir para cada par un camino $C = \langle c_1, c_2, ..., c_k \rangle$, tal que:
+
+\begin{itemize}
+    \item Cada $c_i$ es una celda adyacente a $c_{i-1}$ (movimientos permitidos: arriba, abajo, izquierda, derecha).
+    \item Las celdas de cada camino son disjuntas respecto a los demás caminos (no se cruzan ni comparten celdas intermedias).
+    \item Un camino no puede pasar sobre una celda que contiene un número distinto al que se desea conectar. Los puntos de inicio/fin de otros números no pueden formar parte del interior de un camino.
+    \item Cada celda del tablero puede pertenecer como máximo a un solo camino.
+    \item (Opcional) Se busca que todas las celdas del tablero sean utilizadas por algún camino. Esta condición es configurable en la implementación.
+\end{itemize}
+
+El juego termina exitosamente cuando todos los pares de números han sido conectados respetando las restricciones anteriores.
+
+\section{Diseño}
+
+\begin{defn*}
+    Entradas:
+\end{defn*}
+\selectlanguage{spanish}%
+\begin{enumerate}
+    \item Una matriz $T$ de dimensión $n \times n$ que representa el tablero, donde cada celda $T_{i,j}$ contiene un número natural $a \in \mathbb{N}$ o está vacía (representada por 0).
+    \item Un diccionario o estructura que mapea cada número a las coordenadas de sus dos apariciones: $\mathcal{P} = \{num_k: [(r_{k1}, c_{k1}), (r_{k2}, c_{k2})] \}$.
+\end{enumerate}
+\selectlanguage{spanish}%
+~~~~
+\begin{defn*}
+    Salidas:
+\end{defn*}
+\begin{enumerate}
+    \item Una lista de caminos $\mathcal{C} = \langle C_1, C_2, ..., C_k\ \rangle $ tal que cada $C_i = \langle cell_1, cell_2, ..., cell_m \rangle$ es un conjunto ordenado de coordenadas que conecta el par correspondiente en $\mathcal{P}$ respetando las restricciones del juego.
+    \item O una indicación de que no se encontró solución.
+\end{enumerate}
+
+\begin{defn*}
+    Restricciones (reiteradas para claridad):
+\end{defn*}
+\begin{enumerate}
+    \item Cada camino debe conectar exactamente dos celdas que contienen el mismo número.
+    \item Los caminos deben estar formados únicamente por movimientos a celdas adyacentes no diagonales.
+    \item Las celdas de un camino no pueden ser utilizadas por otro camino (excepto los puntos de inicio/fin que pertenecen a su propio número).
+    \item Un camino no puede ocupar una celda que contenga un número diferente al que está conectando.
+    \item Cada celda del tablero puede ser parte de a lo sumo un camino.
+    \item (Opcional, configurable) El conjunto de todos los caminos debe cubrir todas las celdas del tablero.
+\end{enumerate}
+
+\begin{defn*}
+    Lógica para proponer un algoritmo:
+\end{defn*}
+
+NumberLink es formalmente un problema de tipo NP-Completo, como lo demostraron Yato y Seta. Esto implica que no se conoce un algoritmo que lo resuelva en tiempo polinomial para todos los casos. Sabiendo esto, se opta por una estrategia de backtracking, que es una forma de búsqueda exhaustiva, por las siguientes razones:
+
+\begin{itemize}
+    \item \textbf{Naturaleza combinatoria:} Para cada par de puntos existen múltiples caminos posibles, y la elección de un camino para un par afecta directamente las posibilidades para los demás. El backtracking permite explorar sistemáticamente el espacio de soluciones.
+    \item \textbf{Interdependencia y bloqueos:} Un camino trazado puede bloquear la conexión de otros pares. El backtracking permite retroceder (deshacer elecciones) si una secuencia de decisiones lleva a un estado sin solución.
+    \item \textbf{Manejo de restricciones:} Las reglas del juego son estrictas y deben verificarse en cada paso. El backtracking se adapta bien a problemas con múltiples restricciones.
+    \item \textbf{Viabilidad para tamaños prácticos:} Aunque la complejidad es exponencial en el peor caso, para tableros de tamaños comunes en juegos (e.g., hasta $10 \times 10$ o ligeramente mayores), un algoritmo de backtracking bien afinado puede encontrar soluciones en tiempos razonables.
+\end{itemize}
+
+Para mejorar la eficiencia y la capacidad del backtracking, se incorporan varias heurísticas y estrategias:
+\begin{enumerate}
+    \item \textbf{Múltiples Estrategias de Ordenamiento de Pares:} El orden en que se intentan conectar los pares puede influir significativamente en la velocidad de la búsqueda y en si se encuentra una solución. La implementación prueba varios órdenes heurísticos:
+    \begin{itemize}
+        \item Por distancia Manhattan entre los puntos del par (más cortos primero).
+        \item Priorizando pares con extremos en los bordes del tablero y mayor distancia.
+        \item Por "flexibilidad" (pares con menos movimientos iniciales válidos primero).
+        \item Orden inverso de la distancia Manhattan.
+    \end{itemize}
+    \item \textbf{Búsqueda Exhaustiva de Caminos por Par:} Para cada par, en lugar de tomar el primer camino encontrado, el algoritmo busca múltiples caminos posibles (usando una Búsqueda en Anchura o BFS) hasta un límite predefinido. Luego, prueba cada uno de estos caminos en el proceso de backtracking.
+    \item \textbf{Poda Temprana con Heurística de Conectividad:} Después de trazar un camino para un par, se realiza una verificación rápida para los siguientes 1-2 pares. Si el camino recién trazado impide completamente la conexión de estos pares futuros (es decir, ya no existe ni siquiera un camino simple entre sus extremos), ese camino se descarta y se prueba otra alternativa para el par actual, podando así ramas del árbol de búsqueda que no llevarán a una solución.
+    \item \textbf{Límite de Tiempo:} Se establece un tiempo máximo para la búsqueda global para evitar ejecuciones excesivamente largas en tableros muy difíciles o sin solución.
+\end{enumerate}
+
+\section{Propuesta de algoritmo}
+
+\subsection{Algoritmo General}
+El algoritmo principal (\texttt{ResolverTablero}) itera sobre diferentes estrategias de ordenamiento de los pares a conectar. Para cada orden, inicia un proceso de backtracking (\texttt{ResolverRecursivo}).
+
+\begin{algorithmic}[1]
+\Procedure{ResolverTablero}{$tablero\_inicial$}
+    \State $pares\_globales \gets \Call{ObtenerParesNumeros}{tablero\_inicial}$
+    \State $estrategias\_ordenamiento \gets [\text{distancia}, \text{borde}, \text{flexibilidad}, \dots]$
+    \For{cada $estrategia$ in $estrategias\_ordenamiento$}
+        \If{tiempo límite no excedido}
+            \State $pares\_ordenados \gets \Call{OrdenarPares}{pares\_globales, estrategia}$
+            \State $tablero\_actual \gets \Call{Copiar}{tablero\_inicial}$
+            \State $caminos\_solucion \gets [\ ]$
+            \If{\Call{ResolverRecursivo}{0, $tablero\_actual, pares\_ordenados, caminos\_solucion$}}
+                \State \Return $caminos\_solucion$
+            \EndIf
+        \Else
+            \State \textbf{break} \Comment{Tiempo límite global excedido}
+        \EndIf
+    \EndFor
+    \State \Return ``No hay solución válida''
+\EndProcedure
+
+\Procedure{ResolverRecursivo}{$indice\_par, tablero, pares, caminos\_encontrados$}
+    \If{tiempo límite no excedido \textbf{is FALSE}}
+        \State \Return FALSE
+    \EndIf
+    \State $nodos\_explorados \gets nodos\_explorados + 1$
+    \If{$indice\_par = |pares|$} \Comment{Todos los pares conectados}
+        \If{$require\_all\_cells$ \textbf{and not} \Call{TableroCompleto}{$tablero$}}
+            \State \Return FALSE
+        \EndIf
+        \State \Return TRUE 
+    \EndIf
+    
+    \State $(inicio, fin, numero) \gets pares[indice\_par]$
+    \State $caminos\_posibles\_para\_par \gets \Call{BuscarCaminosExhaustivo}{inicio, fin, tablero, numero}$
+    
+    \If{$caminos\_posibles\_para\_par$ está vacío}
+        \State \Return FALSE
+    \EndIf
+    
+    \For{cada $camino\_actual$ in $caminos\_posibles\_para\_par$}
+        \Call{MarcarCaminoEnTablero}{$camino\_actual, tablero, numero$}
+        \Call{Agregar}{$caminos\_encontrados, camino\_actual$}
+        
+        \If{\Call{VerificarConectividadFutura}{$tablero, pares, indice\_par+1$}} \Comment{Heurística de poda}
+            \If{\Call{ResolverRecursivo}{$indice\_par+1, tablero, pares, caminos\_encontrados$}}
+                \State \Return TRUE
+            \EndIf
+        \EndIf
+        
+        \Comment{Backtrack}
+        \Call{DesmarcarCaminoEnTablero}{$camino\_actual, tablero$}
+        \Call{QuitarUltimo}{$caminos\_encontrados$}
+    \EndFor
+    \State \Return FALSE
+\EndProcedure
+
+\Procedure{BuscarCaminosExhaustivo}{$inicio, fin, tablero, numero$}
+    \State $cola \gets [(inicio, [inicio], \{inicio\})]$ \Comment{posición, camino\_actual, visitados\_en\_camino}
+    \State $caminos\_hallados \gets [\ ]$
+    \State $max\_caminos \gets 50$; $max\_longitud \gets \text{distManhattan} \times 5 + 10$
+    \While{$cola$ no vacía \textbf{and} $|caminos\_hallados| < max\_caminos$}
+        \State $(actual, path, visitados) \gets \Call{Dequeue}{cola}$
+        \If{$|path| > max\_longitud$} \textbf{continue} \EndIf
+        \If{$actual = fin$}
+            \State \Call{Agregar}{$caminos\_hallados, path$}
+            \textbf{continue}
+        \EndIf
+        \For{cada $vecino$ de $actual$}
+            \If{$vecino \notin visitados$ \textbf{and} \Call{EsMovimientoValido}{$vecino, tablero, numero$}}
+                \State $nuevo\_path \gets path + [vecino]$
+                \State $nuevos\_visitados \gets visitados \cup \{vecino\}$
+                \Call{Enqueue}{$cola, (vecino, nuevo\_path, nuevos\_visitados)$}
+            \EndIf
+        \EndFor
+    \EndWhile
+    \State \Return \Call{OrdenarPorLongitud}{$caminos\_hallados$}
+\EndProcedure
+
+\Procedure{EsMovimientoValido}{$celda, tablero, numero$}
+    \If{$celda$ fuera de rango} \Return FALSE \EndIf
+    \State $valor\_celda \gets tablero[celda.r][celda.c]$
+    \If{$valor\_celda = \text{VACIO}$} \Return TRUE \EndIf
+    \If{$valor\_celda = numero$} \Return TRUE \Comment{Permite llegar al destino} \EndIf
+    \If{$valor\_celda = \text{VISITADO}$} \Return FALSE \EndIf
+    \State \Return FALSE \Comment{Celda ocupada por otro número}
+\EndProcedure
+
+\Procedure{MarcarCaminoEnTablero}{$camino, tablero, numero$}
+    \For{$(r, c)$ in $camino$}
+        \If{$tablero\_original[r][c] = \text{VACIO}$} \Comment{Solo marcar celdas originalmente vacías}
+            \State $tablero[r][c] \gets \text{VISITADO}$ 
+        \EndIf
+    \EndFor
+\EndProcedure
+\Procedure{DesmarcarCaminoEnTablero}{$camino, tablero$}
+    \For{$(r, c)$ in $camino$}
+         \If{$tablero\_original[r][c] = \text{VACIO}$}
+            \State $tablero[r][c] \gets \text{VACIO}$
+        \EndIf
+    \EndFor
+\EndProcedure
+\end{algorithmic}
+\caption{Resolución del juego NumberLink mediante backtracking con heurísticas}
+\label{alg:numberlink}
+\end{algorithm}
+
+
+\subsection{Complejidad}
+
+El problema NumberLink es NP-Completo. El algoritmo de backtracking, en su núcleo, explora un árbol de decisiones. La ramificación en cada nodo puede ser grande, dependiendo del número de caminos posibles para un par. Si $k$ es el número de pares y $C_{avg}$ es el número promedio de caminos explorados por par, y $L_{avg}$ es la longitud promedio de un camino (que influye en \texttt{BuscarCaminosExhaustivo} y en las validaciones), la complejidad en el peor de los casos sigue siendo exponencial, algo del orden de $O((C_{avg} \cdot \text{poly}(N^2))^k)$, donde $N^2$ es el tamaño del tablero.
+Las heurísticas (ordenamiento de pares, poda por conectividad) y la búsqueda de múltiples caminos están diseñadas para podar el árbol de búsqueda de manera efectiva y encontrar soluciones más rápidamente en la práctica, especialmente en tableros que tienen soluciones "difíciles" de alcanzar con una búsqueda simple. Sin embargo, no alteran la naturaleza NP-Completa del problema ni la cota superior exponencial del peor caso. El uso de múltiples estrategias de ordenamiento multiplica el trabajo por un factor constante.
+
+
+\subsection{Invariante del bucle de backtracking}
+Para el procedimiento \texttt{ResolverRecursivo} en el Algoritmo \ref{alg:numberlink}:
+\begin{itemize}
+    \item \textbf{Inicialización}: Antes de la primera llamada a \texttt{ResolverRecursivo} (con $indice\_par = 0$), la lista $caminos\_encontrados$ está vacía y el tablero está en su estado inicial (o una copia). Ningún par ha sido conectado.
+    \item \textbf{Mantenimiento}: Al inicio de una llamada a \texttt{ResolverRecursivo} para $indice\_par$, se asume que los $indice\_par$ pares anteriores (desde $0$ hasta $indice\_par-1$) ya han sido conectados exitosamente, sus caminos están en $caminos\_encontrados$, y el $tablero$ refleja estas conexiones. La función intentará conectar el par $pares[indice\_par]$. Si prueba un $camino\_actual$ para este par, lo marca y llama recursivamente. Si la llamada recursiva falla, deshace la marca (backtrack), asegurando que al probar el siguiente $camino\_actual$ (o al retornar si no hay más), el estado del tablero y $caminos\_encontrados$ refleje solo las conexiones válidas hasta $pares[indice\_par-1]$.
+    \item \textbf{Terminación}: Si \texttt{ResolverRecursivo} retorna TRUE, significa que todos los pares (desde $0$ hasta $|pares|-1$) han sido conectados exitosamente, $caminos\_encontrados$ contiene una solución completa, y el $tablero$ está en el estado final de la solución. Si retorna FALSE, significa que no se pudo encontrar una continuación válida desde el estado actual para el $indice\_par$ y los pares subsiguientes, y la función que la llamó realizará el backtrack correspondiente.
+\end{itemize}
+
+
+\subsection{Notas de implementación}
+El código en Python implementa la solución utilizando varias clases y estrategias:
+\begin{itemize}
+    \item \textbf{Clase \texttt{Board}:} Representa el tablero. Almacena la cuadrícula actual (\texttt{grid}) y la original (\texttt{original\_grid}). Proporciona métodos para:
+        \begin{itemize}
+            \item Verificar si un movimiento a una celda $(r,c)$ es válido para un \texttt{number} (\texttt{is\_valid\_move}).
+            \item Marcar y desmarcar celdas (\texttt{mark\_cell}, \texttt{unmark\_cell}).
+            \item Obtener vecinos válidos (\texttt{get\_neighbors}).
+            \item Verificar si el tablero está completamente lleno (\texttt{is\_complete}).
+            \item Obtener la lista de pares de números a conectar (\texttt{get\_pairs}).
+            \item Crear copias profundas del tablero (\texttt{copy}).
+        \end{itemize}
+    \item \textbf{Clase \texttt{NumberLinkSolver}:} Contiene la lógica principal del algoritmo.
+        \begin{itemize}
+            \item \textbf{\texttt{resolver\_tablero(board)}:} Orquesta la solución. Itera sobre diferentes estrategias de ordenamiento de pares. Para cada orden, invoca a \texttt{\_resolver\_exhaustivo}.
+            \item \textbf{Estrategias de Ordenamiento:}
+                \begin{itemize}
+                    \item \texttt{\_order\_by\_distance}: Ordena pares por distancia Manhattan (más cortos primero).
+                    \item \texttt{\_order\_by\_border\_preference}: Heurística que prioriza pares largos en los bordes.
+                    \item \texttt{\_order\_by\_flexibility}: Ordena por el mínimo número de celdas vacías adyacentes a los extremos del par (menos flexibles primero).
+                \end{itemize}
+            \item \textbf{\texttt{\_resolver\_exhaustivo(index, board, pairs, paths)}:} Implementa el backtracking recursivo.
+                \begin{itemize}
+                    \item En cada nivel, para el par actual $pairs[index]$, llama a \texttt{\_buscar\_caminos\_exhaustivo}.
+                    \item Para cada camino devuelto, lo marca en el tablero, lo añade a la lista de $paths$, y realiza una verificación de conectividad básica para los siguientes pares (\texttt{\_conectividad\_basica}) como heurística de poda.
+                    \item Si la poda o la llamada recursiva fallan, realiza backtracking (desmarca el camino, lo elimina de $paths$).
+                \end{itemize}
+            \item \textbf{\texttt{\_buscar\_caminos\_exhaustivo(start, end, board, number)}:} Utiliza BFS para encontrar múltiples caminos (hasta 50, con longitud máxima generosa) entre $start$ y $end$ para el $number$ dado. Los caminos se ordenan por longitud.
+            \item \textbf{\texttt{\_conectividad\_basica(start, end, board, number)}:} Una BFS simple para verificar rápidamente si aún es posible conectar $start$ y $end$ en el tablero actual. Usado para la poda.
+            \item \textbf{Manejo de Estado:} Se utilizan copias profundas del tablero (\texttt{board.copy()}) para cada intento con una nueva estrategia de ordenamiento, y el estado del tablero se modifica y restaura durante el backtracking.
+            \item \textbf{Parámetros Configurables:}
+                \begin{itemize}
+                    \item \texttt{time\_limit}: Límite de tiempo para la búsqueda.
+                    \item \texttt{debug}: Para imprimir información de diagnóstico.
+                    \item \texttt{require\_all\_cells}: Booleano para indicar si la solución debe cubrir todas las celdas.
+                \end{itemize}
+        \end{itemize}
+    \item \textbf{Carga de Tableros:} El módulo \texttt{loader.py} se encarga de leer la representación del tablero desde un archivo de texto.
+    \item \textbf{Interfaz Gráfica (UI):} El módulo \texttt{ui.py} utiliza Tkinter para proporcionar una interfaz visual donde se pueden cargar tableros, ver la solución y, opcionalmente, interactuar manualmente. La resolución automática se ejecuta en un hilo separado para no bloquear la UI.
+\end{itemize}
+La implementación ha demostrado ser capaz de resolver tableros complejos, como el ejemplo 7x7 proporcionado, encontrando soluciones que cubren todas las celdas cuando es requerido y posible.
+
+\end{document}
